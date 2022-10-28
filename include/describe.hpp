@@ -4,7 +4,6 @@
   SPDX-License-Identifier: MIT
 **/
 //==================================================================================================
-#pragma once
 
 //==================================================================================================
 /**
@@ -13,39 +12,48 @@
   describe::id<"S"> returns a an object whose type depends on "S".
 
   Usage: https://gcc.godbolt.org/z/fnKjo7T3M
-  Thanks @beached for the improvement
+  Thanks @beached for the improvements
 **/
 //==================================================================================================
 #include <array>
 #include <string_view>
 #include <utility>
 
+#if defined(__clang__)
+#define DSC_FUNCTION __PRETTY_FUNCTION__
+#define DSC_SETUP(NAME,SEP)                                                                \
+  constexpr auto pfx = std::string_view("auto describe::detail::" NAME "() [T = ").size(); \
+  constexpr auto sfx = std::string_view("]").size();                                       \
+  constexpr auto raw = std::string_view(DSC_FUNCTION)                                      \
+  /**/
+#elif defined(__GNUC__)
+#define DSC_FUNCTION __PRETTY_FUNCTION__
+#define DSC_SETUP(NAME,SEP)                                                                                      \
+  constexpr auto pfx = std::string_view("constexpr auto describe::detail::" NAME "() [with " SEP "T = ").size(); \
+  constexpr auto sfx = std::string_view("]").size();                                                             \
+  constexpr auto raw = std::string_view(DSC_FUNCTION)                                                            \
+  /**/
+#elif defined(_MSC_VER)
+#define DSC_FUNCTION __FUNCSIG__
+#define DSC_SETUP(NAME,SEP)                                                                 \
+  constexpr auto pfx = std::string_view("auto __cdecl describe::detail::" NAME "<").size(); \
+  constexpr auto sfx = std::string_view(">(void)").size();                                  \
+  constexpr auto raw = std::string_view(FN)                                                 \
+  /**/
+#endif
+
 namespace describe
 {
   namespace detail 
   {
-    template <typename T>
-    constexpr auto typer() noexcept 
+    template <typename T> constexpr auto typer() noexcept 
     {
-    #if defined(__clang__)
-      constexpr auto prefix = std::string_view("auto describe::detail::typer() [T = ").size();
-      constexpr auto suffix = std::string_view("]").size();
-      constexpr auto raw    = std::string_view(__PRETTY_FUNCTION__);
-    #elif defined(__GNUC__)
-      constexpr auto prefix = std::string_view("constexpr auto describe::detail::typer() [with T = ").size();
-      constexpr auto suffix = std::string_view("]").size();
-      constexpr auto raw    = std::string_view(__PRETTY_FUNCTION__);
-    #elif defined(_MSC_VER)
-      constexpr auto prefix = std::string_view("auto __cdecl describe::detail::typer<").size();
-      constexpr auto suffix = std::string_view(">(void)").size();
-      constexpr auto raw    = std::string_view(__FUNCSIG__);
-    #endif
-
+      DSC_SETUP("typer","");
       auto value = raw;
-      value.remove_prefix(prefix);
-      value.remove_suffix(suffix);
+      value.remove_prefix(pfx);
+      value.remove_suffix(sfx);
 
-      constexpr auto size = raw.size() - (prefix + suffix);
+      constexpr auto size = raw.size() - (pfx + sfx);
       auto fn = [&]<std::size_t... Is>(std::index_sequence<Is...>) 
       {
         return std::array<char const, sizeof...(Is) + 1>{value[Is]...};
@@ -54,41 +62,24 @@ namespace describe
       return fn(std::make_index_sequence<size>{});
     }
 
-    template <auto T>
-    constexpr auto valuer() noexcept 
+    template <auto T> constexpr auto valuer() noexcept 
     {
-    #if defined(__clang__)
-      constexpr auto prefix = std::string_view("auto describe::detail::valuer() [T = ").size();
-      constexpr auto suffix = std::string_view("]").size();
-      constexpr auto raw    = std::string_view(__PRETTY_FUNCTION__);
-    #elif defined(__GNUC__)
-      constexpr auto prefix = std::string_view("constexpr auto describe::detail::valuer() [with auto T = ").size();
-      constexpr auto suffix = std::string_view("]").size();
-      constexpr auto raw    = std::string_view(__PRETTY_FUNCTION__);
-    #elif defined(_MSC_VER)
-      constexpr auto prefix = std::string_view("auto __cdecl describe::detail::valuer<").size();
-      constexpr auto suffix = std::string_view(">(void)").size();
-      constexpr auto raw    = std::string_view(__FUNCSIG__);
-    #endif
-
+      DSC_SETUP("valuer","auto ");
       auto value = raw;
-      value.remove_prefix(prefix);
-      value.remove_suffix(suffix);
+      value.remove_prefix(pfx);
+      value.remove_suffix(sfx);
 
-      constexpr auto size = raw.size() - (prefix + suffix);
+      constexpr auto size = raw.size() - (pfx + sfx);
       auto fn = [&]<std::size_t... Is>(std::index_sequence<Is...>) 
       {
         return std::array<char const, sizeof...(Is) + 1>{value[Is]...};
       };
-      
+
       return fn(std::make_index_sequence<size>{});
     }
 
-    template <typename T>
-    inline constexpr auto type_array = typer<T>();
-
-    template <auto V>
-    inline constexpr auto value_array = valuer<V>();
+    template<typename T>  inline constexpr auto type_array  = typer<T>();
+    template<auto V>      inline constexpr auto value_array = valuer<V>();
 
     template<std::size_t N> struct str_
     {
@@ -116,14 +107,13 @@ namespace describe
   {
     static constexpr auto value() { return std::string_view(ID.data(), ID.size());}
   };
-
-  template<detail::str_ S>
-  struct id_t 
-  {
-    static constexpr auto value() { return S.value();}
-  };
   
   template<typename T>      inline constexpr auto type  = type_t<T>{};
   template<auto V>          inline constexpr auto value = value_t<V>{};
-  template<detail::str_ V>  inline constexpr auto id    = id_t<V>{};
+  template<detail::str_ S>  inline constexpr auto id    = S;
+
+  namespace literals
+  {
+    template<detail::str_ ID> constexpr auto operator""_id() noexcept { return id<ID>; }
+  }
 }
